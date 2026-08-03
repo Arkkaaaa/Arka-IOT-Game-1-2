@@ -266,22 +266,32 @@ bool persistLedger(const Ledger &value) {
 
 bool loadLedger() {
   ledger = {};
-  if (!preferences.begin("arka-g12-state", true)) return false;
+  if (!preferences.begin("arka-g12-state", false)) return false;
   const String encoded = preferences.getString("ledger", "");
   preferences.end();
   if (encoded.isEmpty()) return true;
+
   JsonDocument document;
-  if (deserializeJson(document, encoded) || !document.is<JsonObjectConst>()) return false;
-  JsonObjectConst input = document.as<JsonObjectConst>();
-  const String state(input["state"] | "");
-  const String kind(input["kind"] | "");
-  ledger.state = state == "ACTIVE" ? LedgerState::ACTIVE : state == "CLEANED" ? LedgerState::CLEANED : LedgerState::NONE;
-  ledger.kind = kind == "SETUP" ? AssociationKind::SETUP : kind == "SESSION" ? AssociationKind::SESSION : AssociationKind::NONE;
-  ledger.id = String(input["associationId"] | "");
-  ledger.reservationId = String(input["reservationId"] | "");
-  ledger.cleanupCommandId = String(input["cleanupCommandId"] | "");
-  return ledger.state != LedgerState::NONE && ledger.kind != AssociationKind::NONE &&
-         validUuid(ledger.id) && validUuid(ledger.reservationId);
+  const bool decoded = !deserializeJson(document, encoded) && document.is<JsonObjectConst>();
+  if (decoded) {
+    JsonObjectConst input = document.as<JsonObjectConst>();
+    const String state(input["state"] | "");
+    const String kind(input["kind"] | "");
+    ledger.state = state == "ACTIVE" ? LedgerState::ACTIVE : state == "CLEANED" ? LedgerState::CLEANED : LedgerState::NONE;
+    ledger.kind = kind == "SETUP" ? AssociationKind::SETUP : kind == "SESSION" ? AssociationKind::SESSION : AssociationKind::NONE;
+    ledger.id = String(input["associationId"] | "");
+    ledger.reservationId = String(input["reservationId"] | "");
+    ledger.cleanupCommandId = String(input["cleanupCommandId"] | "");
+    if (ledger.state != LedgerState::NONE && ledger.kind != AssociationKind::NONE &&
+        validUuid(ledger.id) && validUuid(ledger.reservationId)) return true;
+  }
+
+  ledger = {};
+  if (!preferences.begin("arka-g12-state", false)) return false;
+  preferences.remove("ledger");
+  preferences.end();
+  Serial.println("ARKA_GAME12_LEDGER_RESET");
+  return true;
 }
 
 String base64Url(const uint8_t *bytes, size_t length) {
