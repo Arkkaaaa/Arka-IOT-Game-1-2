@@ -64,3 +64,5 @@ Firmware menggunakan faktor kalibrasi `0.42` dan skala penuh 5.000 gram. Nilai H
 - `ARKA_GAME12_NETWORK_READY` — Wi-Fi dan waktu sistem siap.
 - `ARKA_GAME12_AUTHENTICATED` — autentikasi WSS berhasil.
 - `ARKA_GAME12_HX711_FAULT` — HX711 tidak terdeteksi.
+- `ARKA_GAME12_LEDGER_RAM_ONLY` — Preferences/NVS tidak tersedia; firmware tetap berjalan memakai ledger RAM.
+- `ARKA_GAME12_LEDGER_RESET` — ledger lama korup dan berhasil dibersihkan.
