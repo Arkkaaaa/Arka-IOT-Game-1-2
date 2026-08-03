@@ -1,0 +1,30 @@
+{
+  "version": 1,
+  "author": "Lutfi Alvaro P",
+  "editor": "wokwi",
+  "parts": [
+    {
+      "type": "board-esp32-c3-devkitm-1",
+      "id": "esp",
+      "top": 0,
+      "left": 0,
+      "attrs": {}
+    },
+    {
+      "type": "wokwi-hx711",
+      "id": "hx1",
+      "top": -67.8,
+      "left": 256.2,
+      "attrs": { "type": "5kg" }
+    }
+  ],
+  "connections": [
+    [ "esp:TX", "$serialMonitor:RX", "", [] ],
+    [ "esp:RX", "$serialMonitor:TX", "", [] ],
+    [ "hx1:VCC", "esp:5V", "red", [ "h-28.8", "v134.4" ] ],
+    [ "hx1:GND", "esp:GND.1", "black", [ "h-48", "v124.8" ] ],
+    [ "hx1:DT", "esp:4", "green", [ "h-67.2", "v105.6" ] ],
+    [ "hx1:SCK", "esp:5", "blue", [ "h-86.4", "v96" ] ]
+  ],
+  "dependencies": {}
+}

@@ -1,0 +1,3 @@
+ArduinoJson
+WebSockets by Markus Sattler
+HX711 Arduino Library
