@@ -6,25 +6,25 @@
     {
       "type": "board-esp32-c3-devkitm-1",
       "id": "esp",
-      "top": 0,
-      "left": 0,
+      "top": 18.9,
+      "left": 5.82,
       "attrs": {}
     },
     {
       "type": "wokwi-hx711",
-      "id": "hx1",
-      "top": -67.8,
-      "left": 256.2,
+      "id": "cell1",
+      "top": 60.2,
+      "left": 185,
       "attrs": { "type": "5kg" }
     }
   ],
   "connections": [
-    [ "esp:TX", "$serialMonitor:RX", "", [] ],
-    [ "esp:RX", "$serialMonitor:TX", "", [] ],
-    [ "hx1:VCC", "esp:5V", "red", [ "h-28.8", "v134.4" ] ],
-    [ "hx1:GND", "esp:GND.1", "black", [ "h-48", "v124.8" ] ],
-    [ "hx1:DT", "esp:4", "green", [ "h-67.2", "v105.6" ] ],
-    [ "hx1:SCK", "esp:5", "blue", [ "h-86.4", "v96" ] ]
+    ["esp:TX", "$serialMonitor:RX", "", []],
+    ["esp:RX", "$serialMonitor:TX", "", []],
+    ["esp:4", "cell1:DT", "green", ["h65.92", "v-37.9"]],
+    ["cell1:GND", "esp:GND.6", "black", ["h-19.2", "v86.1"]],
+    ["esp:5", "cell1:SCK", "orange", ["h56.32", "v-19.2"]],
+    ["esp:3V3.2", "cell1:VCC", "red", ["h-9.6", "v-48", "h144", "v105.6"]]
   ],
   "dependencies": {}
 }
