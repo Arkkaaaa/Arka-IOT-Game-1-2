@@ -34,8 +34,8 @@ constexpr char kProtocolName[] = "arka-device-v1";
 constexpr char kWssHost[] = "api.arrka.my.id";
 constexpr uint16_t kWssPort = 443;
 constexpr char kWssPath[] = "/ws/device";
-constexpr char kFirmwareVersion[] = "0.2.4";
-constexpr char kBuildMarker[] = "game12-stale-ledger-recovery-2026-08-04";
+constexpr char kFirmwareVersion[] = "0.2.5";
+constexpr char kBuildMarker[] = "game12-boot-tare-2026-08-05";
 
 constexpr char kWifiSsid[] = "Wokwi-GUEST";
 constexpr char kWifiPassword[] = "";
@@ -522,15 +522,11 @@ void handleCommand(JsonObjectConst envelope) {
       Serial.print("ARKA_GAME12_STALE_LEDGER_REPLACED oldAssociationId=");
       Serial.println(ledger.id);
     }
-    if (type == "setup.bind") {
-      if (!scale.is_ready()) {
-        finishCommand(command, false, "FAULT");
-        return;
-      }
-      scale.tare(10);
-      lastSensorLogMs = 0;
-      Serial.println("ARKA_GAME12_HX711_SETUP_TARED");
+    if (type == "setup.bind" && !scale.is_ready()) {
+      finishCommand(command, false, "FAULT");
+      return;
     }
+    lastSensorLogMs = 0;
     Ledger next{LedgerState::ACTIVE, command.kind, command.associationId, command.reservationId, String()};
     if (!persistLedger(next)) {
       finishCommand(command, false, "FAULT");

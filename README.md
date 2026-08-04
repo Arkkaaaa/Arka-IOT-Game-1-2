@@ -56,7 +56,7 @@ Jika secret diganti, ubah nilai di firmware dan env backend bersamaan, lalu flas
 
 ## Kalibrasi
 
-Firmware menggunakan faktor kalibrasi `0.42` dan skala permainan 120.000 gram. Nilai HX711 dikonversi ke rentang FSR `0–4095`. Firmware melakukan tare otomatis saat `setup.bind`, menerima satu genggaman untuk pemeriksaan, dan tidak melakukan tare ulang saat `session.bind`. Sesuaikan tanda serta nilai `kCalibrationFactor` setelah kalibrasi perangkat fisik.
+Firmware menggunakan faktor kalibrasi `0.42` dan skala permainan 120.000 gram. Nilai HX711 dikonversi ke rentang FSR `0–4095`. Firmware melakukan tare sekali saat boot, menerima satu genggaman untuk pemeriksaan, dan tidak melakukan tare ulang saat `setup.bind` atau `session.bind`. Pastikan sensor tidak diberi beban ketika board dinyalakan. Sesuaikan tanda serta nilai `kCalibrationFactor` setelah kalibrasi perangkat fisik.
 
 ## Indikator Serial
 
