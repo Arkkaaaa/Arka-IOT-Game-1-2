@@ -1,6 +1,6 @@
 # Game 1–2 Firmware
 
-Firmware ESP32-C3 untuk Mode 1 **Peras Jeruk** dan Mode 2 **Tangkap Wayang**. Gaya genggaman dibaca melalui load cell 5 kg dan HX711, lalu dikirim ke backend melalui WebSocket Secure dengan capability `FSR_10HZ` setiap 100 ms.
+Firmware ESP32-C3 untuk Mode 1 **Peras Buah** dan Mode 2 **Go-No-Go**. Gaya genggaman dibaca melalui load cell dan HX711, lalu dikirim ke backend melalui WebSocket Secure setiap 100 ms dengan capability `FSR_10HZ` dan `FSR_TARED_ON_SETUP_BIND`.
 
 ## Isi folder
 
@@ -56,7 +56,7 @@ Jika secret diganti, ubah nilai di firmware dan env backend bersamaan, lalu flas
 
 ## Kalibrasi
 
-Firmware menggunakan faktor kalibrasi `0.42` dan skala penuh 5.000 gram. Nilai HX711 dikonversi ke rentang FSR `0–4095`. Sesuaikan `kCalibrationFactor` setelah kalibrasi perangkat fisik.
+Firmware menggunakan faktor kalibrasi `0.42` dan skala permainan 120.000 gram. Nilai HX711 dikonversi ke rentang FSR `0–4095`. Firmware melakukan tare otomatis saat `setup.bind`, menerima satu genggaman untuk pemeriksaan, dan tidak melakukan tare ulang saat `session.bind`. Sesuaikan tanda serta nilai `kCalibrationFactor` setelah kalibrasi perangkat fisik.
 
 ## Indikator Serial
 

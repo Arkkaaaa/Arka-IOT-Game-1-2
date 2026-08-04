@@ -34,8 +34,8 @@ constexpr char kProtocolName[] = "arka-device-v1";
 constexpr char kWssHost[] = "api.arrka.my.id";
 constexpr uint16_t kWssPort = 443;
 constexpr char kWssPath[] = "/ws/device";
-constexpr char kFirmwareVersion[] = "0.2.2";
-constexpr char kBuildMarker[] = "game12-hx711-c3-2026-08-04-hx711-calibration-fix";
+constexpr char kFirmwareVersion[] = "0.2.3";
+constexpr char kBuildMarker[] = "game12-hx711-c3-2026-08-04-single-grip-calibration";
 
 constexpr char kWifiSsid[] = "Wokwi-GUEST";
 constexpr char kWifiPassword[] = "";
@@ -43,7 +43,7 @@ constexpr char kDeviceSecretBase64[] = "REPLACE_WITH_DEVICE_SECRET_BASE64";
 constexpr uint8_t kHx711DoutPin = 4;
 constexpr uint8_t kHx711SckPin = 5;
 constexpr float kCalibrationFactor = 0.42f;
-constexpr float kFullScaleGrams = 5000.0f;
+constexpr float kGameScaleGrams = 120000.0f;
 constexpr uint32_t kTelemetryIntervalMs = 100;
 constexpr uint32_t kHeartbeatDefaultMs = 5000;
 constexpr uint32_t kServerStaleMs = 45000;
@@ -357,6 +357,7 @@ void sendHello() {
   document["payload"]["firmwareVersion"] = kFirmwareVersion;
   JsonArray capabilities = document["payload"]["capabilities"].to<JsonArray>();
   capabilities.add("FSR_10HZ");
+  capabilities.add("FSR_TARED_ON_SETUP_BIND");
   handshakePhase = sendDocument(document) ? HandshakePhase::WAIT_CHALLENGE : HandshakePhase::IDLE;
 }
 
@@ -409,14 +410,14 @@ bool sendAck(const Command &command, bool ack, const String &reason = String()) 
 
 int scaledFsrRaw(float grams) {
   if (!isfinite(grams)) return 0;
-  return constrain(static_cast<int>(lroundf(std::max(0.0f, grams) * 4095.0f / kFullScaleGrams)), 0, 4095);
+  return constrain(static_cast<int>(lroundf(std::max(0.0f, grams) * 4095.0f / kGameScaleGrams)), 0, 4095);
 }
 
 void sendTelemetry(uint32_t now) {
   if (!authenticated || association.kind == AssociationKind::NONE || sensorFault ||
       !intervalElapsed(now, lastTelemetryMs, kTelemetryIntervalMs) || !scale.is_ready()) return;
   lastTelemetryMs = now;
-  const float grams = fabsf(scale.get_units(1));
+  const float grams = std::max(0.0f, scale.get_units(1));
   const int fsrRaw = scaledFsrRaw(grams);
   if (intervalElapsed(now, lastSensorLogMs, 1000)) {
     lastSensorLogMs = now;
@@ -516,6 +517,15 @@ void handleCommand(JsonObjectConst envelope) {
     if (association.kind != AssociationKind::NONE || ledger.state == LedgerState::ACTIVE) {
       finishCommand(command, false, "BUSY");
       return;
+    }
+    if (type == "setup.bind") {
+      if (!scale.is_ready()) {
+        finishCommand(command, false, "FAULT");
+        return;
+      }
+      scale.tare(10);
+      lastSensorLogMs = 0;
+      Serial.println("ARKA_GAME12_HX711_SETUP_TARED");
     }
     Ledger next{LedgerState::ACTIVE, command.kind, command.associationId, command.reservationId, String()};
     if (!persistLedger(next)) {
