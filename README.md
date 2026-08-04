@@ -14,7 +14,7 @@ Firmware ESP32-C3 untuk Mode 1 **Peras Buah** dan Mode 2 **Go-No-Go**. Gaya geng
 | --- | --- |
 | HX711 DT | GPIO4 |
 | HX711 SCK | GPIO5 |
-| HX711 VCC | 5V |
+| HX711 VCC | 3V3 |
 | HX711 GND | GND |
 
 ## Kebutuhan
