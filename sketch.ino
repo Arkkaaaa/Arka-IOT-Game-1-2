@@ -34,8 +34,8 @@ constexpr char kProtocolName[] = "arka-device-v1";
 constexpr char kWssHost[] = "api.arrka.my.id";
 constexpr uint16_t kWssPort = 443;
 constexpr char kWssPath[] = "/ws/device";
-constexpr char kFirmwareVersion[] = "0.2.1";
-constexpr char kBuildMarker[] = "game12-hx711-c3-2026-08-03-ledger-ram-fallback";
+constexpr char kFirmwareVersion[] = "0.2.2";
+constexpr char kBuildMarker[] = "game12-hx711-c3-2026-08-04-hx711-calibration-fix";
 
 constexpr char kWifiSsid[] = "Wokwi-GUEST";
 constexpr char kWifiPassword[] = "";
@@ -227,6 +227,7 @@ uint32_t heartbeatIntervalMs = kHeartbeatDefaultMs;
 uint32_t lastHeartbeatMs = 0;
 uint32_t lastServerContactMs = 0;
 uint32_t lastTelemetryMs = 0;
+uint32_t lastSensorLogMs = 0;
 uint32_t socketConnectedAtMs = 0;
 uint32_t authenticatedAtMs = 0;
 uint32_t reconnectDelayMs = 3000;
@@ -415,12 +416,20 @@ void sendTelemetry(uint32_t now) {
   if (!authenticated || association.kind == AssociationKind::NONE || sensorFault ||
       !intervalElapsed(now, lastTelemetryMs, kTelemetryIntervalMs) || !scale.is_ready()) return;
   lastTelemetryMs = now;
-  const float grams = scale.get_units(1);
+  const float grams = fabsf(scale.get_units(1));
+  const int fsrRaw = scaledFsrRaw(grams);
+  if (intervalElapsed(now, lastSensorLogMs, 1000)) {
+    lastSensorLogMs = now;
+    Serial.print("ARKA_GAME12_SENSOR grams=");
+    Serial.print(grams, 1);
+    Serial.print(" fsr_raw=");
+    Serial.println(fsrRaw);
+  }
   const uint64_t sequence = outgoingSequence + 1;
   JsonDocument document;
   addEnvelope(document, "telemetry.fsr", sequence);
   addAssociation(document, association.kind, association.id);
-  document["payload"]["fsrRaw"] = scaledFsrRaw(grams);
+  document["payload"]["fsrRaw"] = fsrRaw;
   if (sendDocument(document)) outgoingSequence = sequence;
 }
 
