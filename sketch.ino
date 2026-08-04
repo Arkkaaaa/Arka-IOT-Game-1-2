@@ -34,8 +34,8 @@ constexpr char kProtocolName[] = "arka-device-v1";
 constexpr char kWssHost[] = "api.arrka.my.id";
 constexpr uint16_t kWssPort = 443;
 constexpr char kWssPath[] = "/ws/device";
-constexpr char kFirmwareVersion[] = "0.2.3";
-constexpr char kBuildMarker[] = "game12-hx711-c3-2026-08-04-single-grip-calibration";
+constexpr char kFirmwareVersion[] = "0.2.4";
+constexpr char kBuildMarker[] = "game12-stale-ledger-recovery-2026-08-04";
 
 constexpr char kWifiSsid[] = "Wokwi-GUEST";
 constexpr char kWifiPassword[] = "";
@@ -514,9 +514,13 @@ void handleCommand(JsonObjectConst envelope) {
       finishCommand(command, true);
       return;
     }
-    if (association.kind != AssociationKind::NONE || ledger.state == LedgerState::ACTIVE) {
+    if (association.kind != AssociationKind::NONE) {
       finishCommand(command, false, "BUSY");
       return;
+    }
+    if (ledger.state == LedgerState::ACTIVE) {
+      Serial.print("ARKA_GAME12_STALE_LEDGER_REPLACED oldAssociationId=");
+      Serial.println(ledger.id);
     }
     if (type == "setup.bind") {
       if (!scale.is_ready()) {
@@ -539,9 +543,14 @@ void handleCommand(JsonObjectConst envelope) {
   }
 
   if (type == "setup.unbind" || type == "session.unbind") {
-    const bool exact = ledger.kind == command.kind && ledger.id == command.associationId &&
-                       ledger.reservationId == command.reservationId;
+    bool exact = ledger.kind == command.kind && ledger.id == command.associationId &&
+                 ledger.reservationId == command.reservationId;
     const bool replay = exact && ledger.state == LedgerState::CLEANED && ledger.cleanupCommandId == command.commandId;
+    if (!exact && association.kind == AssociationKind::NONE && ledger.state == LedgerState::ACTIVE) {
+      exact = true;
+      Serial.print("ARKA_GAME12_STALE_CLEANUP_ACCEPTED oldAssociationId=");
+      Serial.println(ledger.id);
+    }
     if (!exact || (ledger.state == LedgerState::CLEANED && !replay)) {
       finishCommand(command, false, "INVALID_ASSOCIATION");
       return;
