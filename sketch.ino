@@ -34,8 +34,8 @@ constexpr char kProtocolName[] = "arka-device-v1";
 constexpr char kWssHost[] = "api.arrka.my.id";
 constexpr uint16_t kWssPort = 443;
 constexpr char kWssPath[] = "/ws/device";
-constexpr char kFirmwareVersion[] = "0.2.0";
-constexpr char kBuildMarker[] = "game12-hx711-c3-2026-08-02";
+constexpr char kFirmwareVersion[] = "0.2.1";
+constexpr char kBuildMarker[] = "game12-hx711-c3-2026-08-03-ledger-ram-fallback";
 
 constexpr char kWifiSsid[] = "Wokwi-GUEST";
 constexpr char kWifiPassword[] = "";
@@ -227,6 +227,8 @@ uint32_t heartbeatIntervalMs = kHeartbeatDefaultMs;
 uint32_t lastHeartbeatMs = 0;
 uint32_t lastServerContactMs = 0;
 uint32_t lastTelemetryMs = 0;
+uint32_t socketConnectedAtMs = 0;
+uint32_t authenticatedAtMs = 0;
 uint32_t reconnectDelayMs = 3000;
 
 bool decodeDeviceSecret(const String &encoded, Provisioning &target) {
@@ -258,15 +260,22 @@ bool persistLedger(const Ledger &value) {
   document["cleanupCommandId"] = value.cleanupCommandId;
   String encoded;
   serializeJson(document, encoded);
-  if (!preferences.begin("arka-g12-state", false)) return false;
+  if (!preferences.begin("arka-g12-state", false)) {
+    Serial.println("ARKA_GAME12_LEDGER_RAM_ONLY");
+    return true;
+  }
   const bool saved = preferences.putString("ledger", encoded) == encoded.length();
   preferences.end();
-  return saved;
+  if (!saved) Serial.println("ARKA_GAME12_LEDGER_RAM_ONLY");
+  return true;
 }
 
 bool loadLedger() {
   ledger = {};
-  if (!preferences.begin("arka-g12-state", false)) return false;
+  if (!preferences.begin("arka-g12-state", false)) {
+    Serial.println("ARKA_GAME12_LEDGER_RAM_ONLY");
+    return true;
+  }
   const String encoded = preferences.getString("ledger", "");
   preferences.end();
   if (encoded.isEmpty()) return true;
@@ -287,10 +296,13 @@ bool loadLedger() {
   }
 
   ledger = {};
-  if (!preferences.begin("arka-g12-state", false)) return false;
-  preferences.remove("ledger");
-  preferences.end();
-  Serial.println("ARKA_GAME12_LEDGER_RESET");
+  if (preferences.begin("arka-g12-state", false)) {
+    preferences.remove("ledger");
+    preferences.end();
+    Serial.println("ARKA_GAME12_LEDGER_RESET");
+  } else {
+    Serial.println("ARKA_GAME12_LEDGER_RAM_ONLY");
+  }
   return true;
 }
 
@@ -581,7 +593,8 @@ void handleAccept(JsonObjectConst input) {
   authenticated = true;
   handshakePhase = HandshakePhase::IDLE;
   reconnectDelayMs = 3000;
-  lastServerContactMs = millis();
+  authenticatedAtMs = millis();
+  lastServerContactMs = authenticatedAtMs;
   sendHealth("device.status");
   Serial.println("ARKA_GAME12_AUTHENTICATED");
 }
@@ -615,6 +628,8 @@ void handleText(uint8_t *payload, size_t length) {
 void onWebSocketEvent(WStype_t event, uint8_t *payload, size_t length) {
   if (event == WStype_CONNECTED) {
     socketConnected = true;
+    socketConnectedAtMs = millis();
+    authenticatedAtMs = 0;
     authenticated = false;
     handshakePhase = HandshakePhase::IDLE;
     lastServerSequence = 0;
@@ -626,13 +641,23 @@ void onWebSocketEvent(WStype_t event, uint8_t *payload, size_t length) {
   } else if (event == WStype_PING || event == WStype_PONG) {
     lastServerContactMs = millis();
   } else if (event == WStype_DISCONNECTED || event == WStype_ERROR) {
+    const uint32_t now = millis();
+    Serial.print("ARKA_GAME12_WSS_DISCONNECTED event=");
+    Serial.print(event == WStype_ERROR ? "ERROR" : "CLOSED");
+    Serial.print(" connected_ms=");
+    Serial.print(static_cast<uint32_t>(now - socketConnectedAtMs));
+    Serial.print(" authenticated_ms=");
+    Serial.print(authenticatedAtMs == 0 ? 0 : static_cast<uint32_t>(now - authenticatedAtMs));
+    Serial.print(" server_silent_ms=");
+    Serial.print(static_cast<uint32_t>(now - lastServerContactMs));
+    Serial.print(" wifi_status=");
+    Serial.println(static_cast<int>(WiFi.status()));
     socketConnected = false;
     authenticated = false;
     handshakePhase = HandshakePhase::IDLE;
     association.clear();
     reconnectDelayMs = std::min<uint32_t>(reconnectDelayMs * 2, 60000);
     webSocket.setReconnectInterval(reconnectDelayMs);
-    Serial.println("ARKA_GAME12_WSS_DISCONNECTED");
   }
 }
 
@@ -686,11 +711,7 @@ void setup() {
     delay(1000);
     ESP.restart();
   }
-  if (!loadLedger()) {
-    Serial.println("ARKA_GAME12_LEDGER_INVALID");
-    delay(1000);
-    ESP.restart();
-  }
+  loadLedger();
 
   bootId = randomUuid();
   connectWifi();
