@@ -34,14 +34,21 @@ constexpr char kProtocolName[] = "arka-device-v1";
 constexpr char kWssHost[] = "api.arrka.my.id";
 constexpr uint16_t kWssPort = 443;
 constexpr char kWssPath[] = "/ws/device";
-constexpr char kFirmwareVersion[] = "0.2.5";
+constexpr char kFirmwareVersion[] = "0.2.6";
 constexpr char kBuildMarker[] = "game12-boot-tare-2026-08-05";
 
 constexpr char kWifiSsid[] = "Wokwi-GUEST";
 constexpr char kWifiPassword[] = "";
 constexpr char kDeviceSecretBase64[] = "REPLACE_WITH_DEVICE_SECRET_BASE64";
-constexpr uint8_t kHx711DoutPin = 4;
-constexpr uint8_t kHx711SckPin = 5;
+
+// ==========================================
+// KONFIGURASI PIN TERBARU 
+// ==========================================
+constexpr uint8_t kBatteryPin   = 1; // Baterai di P01
+constexpr uint8_t kBuzzerPin    = 2; // Buzzer di P02
+constexpr uint8_t kHx711DoutPin = 3; // DT HX711 di P03
+constexpr uint8_t kHx711SckPin  = 4; // SCK HX711 di P04
+
 constexpr float kCalibrationFactor = 0.42f;
 constexpr float kGameScaleGrams = 120000.0f;
 constexpr uint32_t kTelemetryIntervalMs = 100;
@@ -232,6 +239,55 @@ uint32_t socketConnectedAtMs = 0;
 uint32_t authenticatedAtMs = 0;
 uint32_t reconnectDelayMs = 3000;
 
+// ==========================================
+// VARIABEL & STATE BATERAI
+// ==========================================
+int batteryPercent = 100;
+bool batteryCritical = false; 
+unsigned long lastBatteryCheckMs = 0;
+unsigned long lastBuzzerToggleMs = 0;
+bool buzzerState = false;
+
+// Nilai ADC untuk pemetaan baterai (bisa disesuaikan nanti)
+const int adcBatPenuh = 2605; 
+const int adcBatHabis = 1985; 
+
+void manageBatteryAndBuzzer(uint32_t now) {
+  // 1. Baca baterai setiap 5 detik
+  if (now - lastBatteryCheckMs > 5000) {
+    lastBatteryCheckMs = now;
+    int adcValue = analogRead(kBatteryPin);
+    
+    // Mapping nilai ADC ke persentase
+    batteryPercent = map(adcValue, adcBatHabis, adcBatPenuh, 0, 100);
+    batteryPercent = constrain(batteryPercent, 0, 100);
+    
+    // Tandai kritis jika <= 10%
+    batteryCritical = (batteryPercent <= 10);
+  }
+
+  // 2. Logika Indikator Buzzer (Non-Blocking)
+  if (batteryPercent <= 10) {
+    // Kritis (<= 10%): Beep cepat & alarm keras (Interval 250ms)
+    if (now - lastBuzzerToggleMs > 250) {
+      lastBuzzerToggleMs = now;
+      buzzerState = !buzzerState;
+      if (buzzerState) {
+        tone(kBuzzerPin, 1500, 150); // Frekuensi tinggi
+      }
+    }
+  } else if (batteryPercent <= 20) {
+    // Peringatan (<= 20%): Beep lambat (Interval 1000ms)
+    if (now - lastBuzzerToggleMs > 1000) {
+      lastBuzzerToggleMs = now;
+      buzzerState = !buzzerState;
+      if (buzzerState) {
+        tone(kBuzzerPin, 800, 200); // Frekuensi sedang
+      }
+    }
+  }
+}
+
 bool decodeDeviceSecret(const String &encoded, Provisioning &target) {
   target.clearSecret();
   if (!validStandardBase64(encoded)) return false;
@@ -385,9 +441,10 @@ bool sendHealth(const char *type) {
   JsonDocument document;
   addEnvelope(document, type, sequence);
   document["payload"]["battery"]["valid"] = true;
-  document["payload"]["battery"]["percent"] = 100;
+  document["payload"]["battery"]["percent"] = batteryPercent; // Dikirim persentase real
   JsonArray faults = document["payload"]["faults"].to<JsonArray>();
   if (sensorFault) faults.add("FSR");
+  if (batteryCritical) faults.add("BATTERY_CRITICAL");
   if (!sendDocument(document)) return false;
   outgoingSequence = sequence;
   lastHeartbeatMs = millis();
@@ -414,6 +471,9 @@ int scaledFsrRaw(float grams) {
 }
 
 void sendTelemetry(uint32_t now) {
+  // Jika baterai <= 10%, blokir pengiriman telemetry (tidak bisa main)
+  if (batteryCritical) return;
+
   if (!authenticated || association.kind == AssociationKind::NONE || sensorFault ||
       !intervalElapsed(now, lastTelemetryMs, kTelemetryIntervalMs) || !scale.is_ready()) return;
   lastTelemetryMs = now;
@@ -509,6 +569,12 @@ void handleCommand(JsonObjectConst envelope) {
   serverSequenceInitialized = true;
 
   if (type == "setup.bind" || type == "session.bind") {
+    // Blokir pengikatan sesi baru jika baterai <= 10%
+    if (batteryCritical) {
+      finishCommand(command, false, "BATTERY_CRITICAL");
+      return;
+    }
+
     if (activeLedgerMatches(command)) {
       restoreAssociation(command);
       finishCommand(command, true);
@@ -728,6 +794,10 @@ void setup() {
   Serial.println("ARKA_GAME12_STARTING");
   Serial.print("ARKA_GAME12_BUILD=");
   Serial.println(kBuildMarker);
+  
+  pinMode(kBatteryPin, INPUT);
+  pinMode(kBuzzerPin, OUTPUT);
+  
   initializeScale();
 
   if (!initializeProvisioning()) {
@@ -750,6 +820,9 @@ void setup() {
 void loop() {
   webSocket.loop();
   const uint32_t now = millis();
+  
+  // Eksekusi fungsi pantau baterai & bunyi buzzer
+  manageBatteryAndBuzzer(now);
 
   if (WiFi.status() != WL_CONNECTED || (authenticated && intervalElapsed(now, lastServerContactMs, kServerStaleMs))) {
     if (socketConnected) webSocket.disconnect();
