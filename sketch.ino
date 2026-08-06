@@ -7,7 +7,7 @@
   - WebSockets by Markus Sattler 2.6.1+
   - HX711 Arduino Library by Bogdan Necula
 
-  Wi-Fi and device secret are hardcoded in this file.
+  Wi-Fi and device secret are supplied through arka_secrets.h.
   The device secret must match DEVICE_SECRET_BASE64 on the backend.
 */
 
@@ -23,6 +23,14 @@
 #include <mbedtls/platform_util.h>
 #include <time.h>
 
+#if __has_include("arka_secrets.h")
+#include "arka_secrets.h"
+#else
+#define ARKA_WIFI_SSID "Wokwi-GUEST"
+#define ARKA_WIFI_PASSWORD ""
+#define ARKA_DEVICE_SECRET_BASE64 "REPLACE_WITH_DEVICE_SECRET_BASE64"
+#endif
+
 #include <algorithm>
 #include <cctype>
 #include <memory>
@@ -34,12 +42,12 @@ constexpr char kProtocolName[] = "arka-device-v1";
 constexpr char kWssHost[] = "api.arrka.my.id";
 constexpr uint16_t kWssPort = 443;
 constexpr char kWssPath[] = "/ws/device";
-constexpr char kFirmwareVersion[] = "0.2.5";
-constexpr char kBuildMarker[] = "game12-boot-tare-2026-08-05";
+constexpr char kFirmwareVersion[] = "0.2.6";
+constexpr char kBuildMarker[] = "game12-bind-tare-health-2026-08-06";
 
-constexpr char kWifiSsid[] = "Wokwi-GUEST";
-constexpr char kWifiPassword[] = "";
-constexpr char kDeviceSecretBase64[] = "REPLACE_WITH_DEVICE_SECRET_BASE64";
+constexpr char kWifiSsid[] = ARKA_WIFI_SSID;
+constexpr char kWifiPassword[] = ARKA_WIFI_PASSWORD;
+constexpr char kDeviceSecretBase64[] = ARKA_DEVICE_SECRET_BASE64;
 constexpr uint8_t kHx711DoutPin = 4;
 constexpr uint8_t kHx711SckPin = 5;
 constexpr float kCalibrationFactor = 0.42f;
@@ -47,6 +55,7 @@ constexpr float kGameScaleGrams = 120000.0f;
 constexpr uint32_t kTelemetryIntervalMs = 100;
 constexpr uint32_t kHeartbeatDefaultMs = 5000;
 constexpr uint32_t kServerStaleMs = 45000;
+constexpr uint32_t kSensorUnavailableMs = 2000;
 constexpr uint32_t kProvisioningTimeoutMs = 300000;
 constexpr uint32_t kBootReprovisionWindowMs = 3000;
 constexpr size_t kMaxMessageBytes = 16 * 1024;
@@ -228,6 +237,7 @@ uint32_t lastHeartbeatMs = 0;
 uint32_t lastServerContactMs = 0;
 uint32_t lastTelemetryMs = 0;
 uint32_t lastSensorLogMs = 0;
+uint32_t sensorUnavailableSinceMs = 0;
 uint32_t socketConnectedAtMs = 0;
 uint32_t authenticatedAtMs = 0;
 uint32_t reconnectDelayMs = 3000;
@@ -413,6 +423,24 @@ int scaledFsrRaw(float grams) {
   return constrain(static_cast<int>(lroundf(std::max(0.0f, grams) * 4095.0f / kGameScaleGrams)), 0, 4095);
 }
 
+void updateSensorHealth(uint32_t now) {
+  if (scale.is_ready()) {
+    sensorUnavailableSinceMs = 0;
+    if (sensorFault) {
+      sensorFault = false;
+      sendHealth("device.status");
+      Serial.println("ARKA_GAME12_HX711_RECOVERED");
+    }
+    return;
+  }
+  if (sensorUnavailableSinceMs == 0) sensorUnavailableSinceMs = now;
+  if (!sensorFault && intervalElapsed(now, sensorUnavailableSinceMs, kSensorUnavailableMs)) {
+    sensorFault = true;
+    sendHealth("device.status");
+    Serial.println("ARKA_GAME12_HX711_FAULT");
+  }
+}
+
 void sendTelemetry(uint32_t now) {
   if (!authenticated || association.kind == AssociationKind::NONE || sensorFault ||
       !intervalElapsed(now, lastTelemetryMs, kTelemetryIntervalMs) || !scale.is_ready()) return;
@@ -522,9 +550,24 @@ void handleCommand(JsonObjectConst envelope) {
       Serial.print("ARKA_GAME12_STALE_LEDGER_REPLACED oldAssociationId=");
       Serial.println(ledger.id);
     }
-    if (type == "setup.bind" && !scale.is_ready()) {
-      finishCommand(command, false, "FAULT");
-      return;
+    if (type == "setup.bind") {
+      if (!scale.is_ready()) {
+        sensorFault = true;
+        sendHealth("device.status");
+        finishCommand(command, false, "FAULT");
+        return;
+      }
+      scale.tare(10);
+      if (!scale.is_ready()) {
+        sensorFault = true;
+        sendHealth("device.status");
+        finishCommand(command, false, "FAULT");
+        return;
+      }
+      sensorFault = false;
+      sensorUnavailableSinceMs = 0;
+      sendHealth("device.status");
+      Serial.println("ARKA_GAME12_HX711_SETUP_TARED");
     }
     lastSensorLogMs = 0;
     Ledger next{LedgerState::ACTIVE, command.kind, command.associationId, command.reservationId, String()};
@@ -539,14 +582,9 @@ void handleCommand(JsonObjectConst envelope) {
   }
 
   if (type == "setup.unbind" || type == "session.unbind") {
-    bool exact = ledger.kind == command.kind && ledger.id == command.associationId &&
-                 ledger.reservationId == command.reservationId;
+    const bool exact = ledger.kind == command.kind && ledger.id == command.associationId &&
+                       ledger.reservationId == command.reservationId;
     const bool replay = exact && ledger.state == LedgerState::CLEANED && ledger.cleanupCommandId == command.commandId;
-    if (!exact && association.kind == AssociationKind::NONE && ledger.state == LedgerState::ACTIVE) {
-      exact = true;
-      Serial.print("ARKA_GAME12_STALE_CLEANUP_ACCEPTED oldAssociationId=");
-      Serial.println(ledger.id);
-    }
     if (!exact || (ledger.state == LedgerState::CLEANED && !replay)) {
       finishCommand(command, false, "INVALID_ASSOCIATION");
       return;
@@ -711,6 +749,7 @@ void initializeScale() {
   const uint32_t started = millis();
   while (!scale.is_ready() && !intervalElapsed(millis(), started, 5000)) delay(10);
   sensorFault = !scale.is_ready();
+  sensorUnavailableSinceMs = sensorFault ? millis() : 0;
   if (!sensorFault) {
     scale.set_scale(kCalibrationFactor);
     scale.tare(10);
@@ -758,6 +797,7 @@ void loop() {
     association.clear();
   }
 
+  updateSensorHealth(now);
   if (authenticated && intervalElapsed(now, lastHeartbeatMs, heartbeatIntervalMs)) sendHealth("device.heartbeat");
   sendTelemetry(now);
   yield();

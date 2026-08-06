@@ -37,15 +37,15 @@ Backend WSS yang digunakan adalah `api.arrka.my.id` pada path `/ws/device` denga
 
 ## Device secret
 
-Wi-Fi dan device secret sudah di-hardcode di `sketch.ino` melalui `kWifiSsid`, `kWifiPassword`, dan `kDeviceSecretBase64`. Tidak ada input provisioning melalui Serial Monitor.
+Salin `arka_secrets.example.h` menjadi `arka_secrets.h`, lalu isi Wi-Fi dan device secret pada file lokal tersebut. `arka_secrets.h` diabaikan Git dan tidak boleh di-commit.
 
 Backend harus memakai nilai Base64 yang sama:
 
 ```env
-DEVICE_SECRET_BASE64=<NILAI_kDeviceSecretBase64>
+DEVICE_SECRET_BASE64=<NILAI_ARKA_DEVICE_SECRET_BASE64>
 ```
 
-Jika secret diganti, ubah nilai di firmware dan env backend bersamaan, lalu flash ulang perangkat.
+Jika secret diganti, perbarui `arka_secrets.h` dan env backend bersamaan, lalu flash ulang perangkat. Secret yang pernah masuk riwayat Git harus dirotasi.
 
 ## Menjalankan di Wokwi
 
@@ -56,11 +56,13 @@ Jika secret diganti, ubah nilai di firmware dan env backend bersamaan, lalu flas
 
 ## Kalibrasi
 
-Firmware menggunakan faktor kalibrasi `0.42` dan skala permainan 120.000 gram. Nilai HX711 dikonversi ke rentang FSR `0–4095`. Firmware melakukan tare sekali saat boot, menerima satu genggaman untuk pemeriksaan, dan tidak melakukan tare ulang saat `setup.bind` atau `session.bind`. Pastikan sensor tidak diberi beban ketika board dinyalakan. Sesuaikan tanda serta nilai `kCalibrationFactor` setelah kalibrasi perangkat fisik.
+Firmware menggunakan faktor kalibrasi `0.42` dan skala permainan 120.000 gram. Nilai HX711 dikonversi ke rentang FSR `0–4095`. Firmware melakukan tare saat boot dan setiap `setup.bind`, tetapi tidak mengulang tare pada `session.bind`. Pastikan sensor tidak diberi beban ketika board dinyalakan atau persiapan permainan dimulai. Sesuaikan tanda serta nilai `kCalibrationFactor` setelah kalibrasi perangkat fisik.
 
 ## Indikator Serial
 
 - `ARKA_GAME12_HX711_READY` — HX711 siap.
+- `ARKA_GAME12_HX711_SETUP_TARED` — tare persiapan selesai.
+- `ARKA_GAME12_HX711_RECOVERED` — sensor kembali siap setelah gangguan.
 - `ARKA_GAME12_NETWORK_READY` — Wi-Fi dan waktu sistem siap.
 - `ARKA_GAME12_AUTHENTICATED` — autentikasi WSS berhasil.
 - `ARKA_GAME12_HX711_FAULT` — HX711 tidak terdeteksi.
