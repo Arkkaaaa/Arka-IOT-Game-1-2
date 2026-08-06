@@ -16,15 +16,34 @@
       "top": 60.2,
       "left": 185,
       "attrs": { "type": "5kg" }
+    },
+    {
+      "type": "wokwi-potentiometer",
+      "id": "battery",
+      "top": 214,
+      "left": -90,
+      "attrs": { "value": "651" }
+    },
+    {
+      "type": "wokwi-buzzer",
+      "id": "buzzer",
+      "top": 214,
+      "left": 90,
+      "attrs": { "volume": "0.1" }
     }
   ],
   "connections": [
     ["esp:TX", "$serialMonitor:RX", "", []],
     ["esp:RX", "$serialMonitor:TX", "", []],
-    ["esp:4", "cell1:DT", "green", ["h65.92", "v-37.9"]],
+    ["esp:3", "cell1:DT", "green", ["h65.92", "v-37.9"]],
     ["cell1:GND", "esp:GND.6", "black", ["h-19.2", "v86.1"]],
-    ["esp:5", "cell1:SCK", "orange", ["h56.32", "v-19.2"]],
-    ["esp:3V3.2", "cell1:VCC", "red", ["h-9.6", "v-48", "h144", "v105.6"]]
+    ["esp:4", "cell1:SCK", "orange", ["h56.32", "v-19.2"]],
+    ["esp:3V3.2", "cell1:VCC", "red", ["h-9.6", "v-48", "h144", "v105.6"]],
+    ["battery:SIG", "esp:1", "blue", []],
+    ["battery:VCC", "esp:3V3.2", "red", []],
+    ["battery:GND", "esp:GND.6", "black", []],
+    ["buzzer:2", "esp:2", "purple", []],
+    ["buzzer:1", "esp:GND.6", "black", []]
   ],
   "dependencies": {}
 }

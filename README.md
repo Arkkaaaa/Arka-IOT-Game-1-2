@@ -12,8 +12,10 @@ Firmware ESP32-C3 untuk Mode 1 **Peras Buah** dan Mode 2 **Go-No-Go**. Gaya geng
 
 | Komponen | Pin ESP32-C3 |
 | --- | --- |
-| HX711 DT | GPIO4 |
-| HX711 SCK | GPIO5 |
+| Sensor baterai | GPIO1 |
+| Buzzer | GPIO2 |
+| HX711 DT | GPIO3 |
+| HX711 SCK | GPIO4 |
 | HX711 VCC | 3V3 |
 | HX711 GND | GND |
 
@@ -53,6 +55,7 @@ Jika secret diganti, perbarui `arka_secrets.h` dan env backend bersamaan, lalu f
 2. Gunakan `sketch.ino`, `diagram.json`, dan `libraries.txt` dari folder ini.
 3. Jalankan simulasi.
 4. Ubah nilai beban pada komponen HX711 untuk mensimulasikan genggaman.
+5. Atur potensiometer baterai untuk menguji status baterai dan peringatan buzzer.
 
 ## Kalibrasi
 

@@ -42,14 +42,16 @@ constexpr char kProtocolName[] = "arka-device-v1";
 constexpr char kWssHost[] = "api.arrka.my.id";
 constexpr uint16_t kWssPort = 443;
 constexpr char kWssPath[] = "/ws/device";
-constexpr char kFirmwareVersion[] = "0.2.6";
-constexpr char kBuildMarker[] = "game12-bind-tare-health-2026-08-06";
+constexpr char kFirmwareVersion[] = "0.2.7";
+constexpr char kBuildMarker[] = "game12-battery-bind-health-2026-08-06";
 
 constexpr char kWifiSsid[] = ARKA_WIFI_SSID;
 constexpr char kWifiPassword[] = ARKA_WIFI_PASSWORD;
 constexpr char kDeviceSecretBase64[] = ARKA_DEVICE_SECRET_BASE64;
-constexpr uint8_t kHx711DoutPin = 4;
-constexpr uint8_t kHx711SckPin = 5;
+constexpr uint8_t kBatteryPin = 1;
+constexpr uint8_t kBuzzerPin = 2;
+constexpr uint8_t kHx711DoutPin = 3;
+constexpr uint8_t kHx711SckPin = 4;
 constexpr float kCalibrationFactor = 0.42f;
 constexpr float kGameScaleGrams = 120000.0f;
 constexpr uint32_t kTelemetryIntervalMs = 100;
@@ -242,6 +244,28 @@ uint32_t socketConnectedAtMs = 0;
 uint32_t authenticatedAtMs = 0;
 uint32_t reconnectDelayMs = 3000;
 
+int batteryPercent = 100;
+uint32_t lastBatteryCheckMs = 0;
+uint32_t lastBuzzerMs = 0;
+constexpr int kBatteryAdcFull = 2605;
+constexpr int kBatteryAdcEmpty = 1985;
+
+void manageBatteryAndBuzzer(uint32_t now) {
+  if (intervalElapsed(now, lastBatteryCheckMs, 5000)) {
+    lastBatteryCheckMs = now;
+    const int previousPercent = batteryPercent;
+    const int adcValue = analogRead(kBatteryPin);
+    batteryPercent = constrain(map(adcValue, kBatteryAdcEmpty, kBatteryAdcFull, 0, 100), 0, 100);
+    if (authenticated && batteryPercent != previousPercent) sendHealth("device.status");
+  }
+
+  const uint32_t buzzerIntervalMs = batteryPercent <= 10 ? 250 : batteryPercent <= 20 ? 1000 : 0;
+  if (buzzerIntervalMs > 0 && intervalElapsed(now, lastBuzzerMs, buzzerIntervalMs)) {
+    lastBuzzerMs = now;
+    tone(kBuzzerPin, batteryPercent <= 10 ? 1500 : 800, batteryPercent <= 10 ? 150 : 200);
+  }
+}
+
 bool decodeDeviceSecret(const String &encoded, Provisioning &target) {
   target.clearSecret();
   if (!validStandardBase64(encoded)) return false;
@@ -395,7 +419,7 @@ bool sendHealth(const char *type) {
   JsonDocument document;
   addEnvelope(document, type, sequence);
   document["payload"]["battery"]["valid"] = true;
-  document["payload"]["battery"]["percent"] = 100;
+  document["payload"]["battery"]["percent"] = batteryPercent;
   JsonArray faults = document["payload"]["faults"].to<JsonArray>();
   if (sensorFault) faults.add("FSR");
   if (!sendDocument(document)) return false;
@@ -767,6 +791,10 @@ void setup() {
   Serial.println("ARKA_GAME12_STARTING");
   Serial.print("ARKA_GAME12_BUILD=");
   Serial.println(kBuildMarker);
+
+  pinMode(kBatteryPin, INPUT);
+  pinMode(kBuzzerPin, OUTPUT);
+
   initializeScale();
 
   if (!initializeProvisioning()) {
@@ -789,6 +817,8 @@ void setup() {
 void loop() {
   webSocket.loop();
   const uint32_t now = millis();
+
+  manageBatteryAndBuzzer(now);
 
   if (WiFi.status() != WL_CONNECTED || (authenticated && intervalElapsed(now, lastServerContactMs, kServerStaleMs))) {
     if (socketConnected) webSocket.disconnect();
