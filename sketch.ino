@@ -34,8 +34,8 @@ constexpr char kProtocolName[] = "arka-device-v1";
 constexpr char kWssHost[] = "api.arrka.my.id";
 constexpr uint16_t kWssPort = 443;
 constexpr char kWssPath[] = "/ws/device";
-constexpr char kFirmwareVersion[] = "0.2.8";
-constexpr char kBuildMarker[] = "game12-battery-filter-2026-08-07";
+constexpr char kFirmwareVersion[] = "0.2.9";
+constexpr char kBuildMarker[] = "game12-stable-reconnect-2026-08-07";
 
 constexpr char kWifiSsid[] = "Wokwi-GUEST";
 constexpr char kWifiPassword[] = "";
@@ -50,6 +50,7 @@ constexpr uint32_t kTelemetryIntervalMs = 100;
 constexpr uint32_t kHeartbeatDefaultMs = 5000;
 constexpr uint32_t kServerStaleMs = 45000;
 constexpr uint32_t kSensorUnavailableMs = 2000;
+constexpr uint32_t kUnauthenticatedReconnectMs = 16000;
 constexpr uint32_t kProvisioningTimeoutMs = 300000;
 constexpr uint32_t kBootReprovisionWindowMs = 3000;
 constexpr size_t kMaxMessageBytes = 16 * 1024;
@@ -781,6 +782,7 @@ void onWebSocketEvent(WStype_t event, uint8_t *payload, size_t length) {
     lastServerContactMs = millis();
   } else if (event == WStype_DISCONNECTED || event == WStype_ERROR) {
     const uint32_t now = millis();
+    const bool wasAuthenticated = authenticatedAtMs != 0;
     Serial.print("ARKA_GAME12_WSS_DISCONNECTED event=");
     Serial.print(event == WStype_ERROR ? "ERROR" : "CLOSED");
     Serial.print(" connected_ms=");
@@ -795,7 +797,9 @@ void onWebSocketEvent(WStype_t event, uint8_t *payload, size_t length) {
     authenticated = false;
     handshakePhase = HandshakePhase::IDLE;
     association.clear();
-    reconnectDelayMs = std::min<uint32_t>(reconnectDelayMs * 2, 60000);
+    reconnectDelayMs = wasAuthenticated
+      ? std::min<uint32_t>(reconnectDelayMs * 2, 60000)
+      : kUnauthenticatedReconnectMs;
     webSocket.setReconnectInterval(reconnectDelayMs);
   }
 }
