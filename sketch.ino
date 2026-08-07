@@ -42,8 +42,8 @@ constexpr char kProtocolName[] = "arka-device-v1";
 constexpr char kWssHost[] = "api.arrka.my.id";
 constexpr uint16_t kWssPort = 443;
 constexpr char kWssPath[] = "/ws/device";
-constexpr char kFirmwareVersion[] = "0.2.7";
-constexpr char kBuildMarker[] = "game12-battery-bind-health-2026-08-06";
+constexpr char kFirmwareVersion[] = "0.2.8";
+constexpr char kBuildMarker[] = "game12-battery-filter-2026-08-07";
 
 constexpr char kWifiSsid[] = ARKA_WIFI_SSID;
 constexpr char kWifiPassword[] = ARKA_WIFI_PASSWORD;
@@ -244,27 +244,85 @@ uint32_t socketConnectedAtMs = 0;
 uint32_t authenticatedAtMs = 0;
 uint32_t reconnectDelayMs = 3000;
 
+enum class BatteryAlarm : uint8_t { NONE, WARNING, CRITICAL };
+
 int batteryPercent = 100;
+bool batteryValid = false;
+BatteryAlarm batteryAlarm = BatteryAlarm::NONE;
+BatteryAlarm pendingBatteryAlarm = BatteryAlarm::NONE;
+uint8_t pendingBatterySamples = 0;
+uint8_t batteryBeepsRemaining = 0;
 uint32_t lastBatteryCheckMs = 0;
+uint32_t lastBatteryReminderMs = 0;
 uint32_t lastBuzzerMs = 0;
 constexpr int kBatteryAdcFull = 2605;
 constexpr int kBatteryAdcEmpty = 1985;
+constexpr int kBatteryAdcConnectedMinimum = 300;
+constexpr uint32_t kBatteryCheckIntervalMs = 2000;
+constexpr uint32_t kBatteryReminderIntervalMs = 30000;
+constexpr uint32_t kBatteryBeepSpacingMs = 350;
+constexpr uint8_t kBatteryConfirmSamples = 2;
 
 bool sendHealth(const char *type);
 
+int readBatteryAdc() {
+  uint32_t total = 0;
+  constexpr uint8_t sampleCount = 8;
+  for (uint8_t index = 0; index < sampleCount; ++index) {
+    total += analogRead(kBatteryPin);
+    delayMicroseconds(250);
+  }
+  return static_cast<int>(total / sampleCount);
+}
+
 void manageBatteryAndBuzzer(uint32_t now) {
-  if (intervalElapsed(now, lastBatteryCheckMs, 5000)) {
+  if (intervalElapsed(now, lastBatteryCheckMs, kBatteryCheckIntervalMs)) {
     lastBatteryCheckMs = now;
     const int previousPercent = batteryPercent;
-    const int adcValue = analogRead(kBatteryPin);
-    batteryPercent = constrain(map(adcValue, kBatteryAdcEmpty, kBatteryAdcFull, 0, 100), 0, 100);
-    if (authenticated && batteryPercent != previousPercent) sendHealth("device.status");
+    const bool previousValid = batteryValid;
+    const int adcValue = readBatteryAdc();
+    batteryValid = adcValue >= kBatteryAdcConnectedMinimum;
+    if (batteryValid) batteryPercent = constrain(map(adcValue, kBatteryAdcEmpty, kBatteryAdcFull, 0, 100), 0, 100);
+
+    BatteryAlarm candidate = BatteryAlarm::NONE;
+    if (batteryValid) {
+      if (batteryAlarm == BatteryAlarm::CRITICAL && batteryPercent < 13) candidate = BatteryAlarm::CRITICAL;
+      else if (batteryPercent <= 10) candidate = BatteryAlarm::CRITICAL;
+      else if (batteryAlarm == BatteryAlarm::WARNING && batteryPercent < 23) candidate = BatteryAlarm::WARNING;
+      else if (batteryPercent <= 20) candidate = BatteryAlarm::WARNING;
+    }
+
+    if (candidate == batteryAlarm) {
+      pendingBatteryAlarm = candidate;
+      pendingBatterySamples = 0;
+    } else if (candidate != pendingBatteryAlarm) {
+      pendingBatteryAlarm = candidate;
+      pendingBatterySamples = 1;
+    } else if (++pendingBatterySamples >= kBatteryConfirmSamples) {
+      batteryAlarm = candidate;
+      pendingBatterySamples = 0;
+      if (batteryAlarm == BatteryAlarm::NONE) {
+        batteryBeepsRemaining = 0;
+        noTone(kBuzzerPin);
+      } else {
+        batteryBeepsRemaining = batteryAlarm == BatteryAlarm::CRITICAL ? 3 : 2;
+        lastBatteryReminderMs = now;
+        lastBuzzerMs = now - kBatteryBeepSpacingMs;
+      }
+    }
+
+    if (authenticated && (batteryPercent != previousPercent || batteryValid != previousValid)) sendHealth("device.status");
   }
 
-  const uint32_t buzzerIntervalMs = batteryPercent <= 10 ? 250 : batteryPercent <= 20 ? 1000 : 0;
-  if (buzzerIntervalMs > 0 && intervalElapsed(now, lastBuzzerMs, buzzerIntervalMs)) {
+  if (batteryAlarm != BatteryAlarm::NONE && batteryBeepsRemaining == 0 &&
+      intervalElapsed(now, lastBatteryReminderMs, kBatteryReminderIntervalMs)) {
+    batteryBeepsRemaining = batteryAlarm == BatteryAlarm::CRITICAL ? 3 : 2;
+    lastBatteryReminderMs = now;
+  }
+  if (batteryBeepsRemaining > 0 && intervalElapsed(now, lastBuzzerMs, kBatteryBeepSpacingMs)) {
     lastBuzzerMs = now;
-    tone(kBuzzerPin, batteryPercent <= 10 ? 1500 : 800, batteryPercent <= 10 ? 150 : 200);
+    --batteryBeepsRemaining;
+    tone(kBuzzerPin, batteryAlarm == BatteryAlarm::CRITICAL ? 1500 : 800, 140);
   }
 }
 
@@ -420,8 +478,8 @@ bool sendHealth(const char *type) {
   const uint64_t sequence = outgoingSequence + 1;
   JsonDocument document;
   addEnvelope(document, type, sequence);
-  document["payload"]["battery"]["valid"] = true;
-  document["payload"]["battery"]["percent"] = batteryPercent;
+  document["payload"]["battery"]["valid"] = batteryValid;
+  if (batteryValid) document["payload"]["battery"]["percent"] = batteryPercent;
   JsonArray faults = document["payload"]["faults"].to<JsonArray>();
   if (sensorFault) faults.add("FSR");
   if (!sendDocument(document)) return false;
@@ -795,7 +853,10 @@ void setup() {
   Serial.println(kBuildMarker);
 
   pinMode(kBatteryPin, INPUT);
+  analogReadResolution(12);
+  analogSetPinAttenuation(kBatteryPin, ADC_11db);
   pinMode(kBuzzerPin, OUTPUT);
+  noTone(kBuzzerPin);
 
   initializeScale();
 
