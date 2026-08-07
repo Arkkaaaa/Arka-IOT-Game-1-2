@@ -250,6 +250,8 @@ uint32_t lastBuzzerMs = 0;
 constexpr int kBatteryAdcFull = 2605;
 constexpr int kBatteryAdcEmpty = 1985;
 
+bool sendHealth(const char *type);
+
 void manageBatteryAndBuzzer(uint32_t now) {
   if (intervalElapsed(now, lastBatteryCheckMs, 5000)) {
     lastBatteryCheckMs = now;
