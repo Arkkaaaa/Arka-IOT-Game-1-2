@@ -7,7 +7,7 @@
   - WebSockets by Markus Sattler 2.6.1+
   - HX711 Arduino Library by Bogdan Necula
 
-  Wi-Fi and device secret are supplied through arka_secrets.h.
+  Wi-Fi and device secret are configured in this file.
   The device secret must match DEVICE_SECRET_BASE64 on the backend.
 */
 
@@ -23,14 +23,6 @@
 #include <mbedtls/platform_util.h>
 #include <time.h>
 
-#if __has_include("arka_secrets.h")
-#include "arka_secrets.h"
-#else
-#define ARKA_WIFI_SSID "Wokwi-GUEST"
-#define ARKA_WIFI_PASSWORD ""
-#define ARKA_DEVICE_SECRET_BASE64 "REPLACE_WITH_DEVICE_SECRET_BASE64"
-#endif
-
 #include <algorithm>
 #include <cctype>
 #include <memory>
@@ -45,9 +37,9 @@ constexpr char kWssPath[] = "/ws/device";
 constexpr char kFirmwareVersion[] = "0.2.8";
 constexpr char kBuildMarker[] = "game12-battery-filter-2026-08-07";
 
-constexpr char kWifiSsid[] = ARKA_WIFI_SSID;
-constexpr char kWifiPassword[] = ARKA_WIFI_PASSWORD;
-constexpr char kDeviceSecretBase64[] = ARKA_DEVICE_SECRET_BASE64;
+constexpr char kWifiSsid[] = "Wokwi-GUEST";
+constexpr char kWifiPassword[] = "";
+constexpr char kDeviceSecretBase64[] = "REPLACE_WITH_DEVICE_SECRET_BASE64";
 constexpr uint8_t kBatteryPin = 1;
 constexpr uint8_t kBuzzerPin = 2;
 constexpr uint8_t kHx711DoutPin = 3;
@@ -642,6 +634,7 @@ void handleCommand(JsonObjectConst envelope) {
         return;
       }
       scale.tare(10);
+      scale.wait_ready_timeout(200);
       if (!scale.is_ready()) {
         sensorFault = true;
         sendHealth("device.status");

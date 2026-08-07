@@ -39,15 +39,15 @@ Backend WSS yang digunakan adalah `api.arrka.my.id` pada path `/ws/device` denga
 
 ## Device secret
 
-Salin `arka_secrets.example.h` menjadi `arka_secrets.h`, lalu isi Wi-Fi dan device secret pada file lokal tersebut. `arka_secrets.h` diabaikan Git dan tidak boleh di-commit.
+Wi-Fi dan device secret dikonfigurasi langsung di `sketch.ino` melalui `kWifiSsid`, `kWifiPassword`, dan `kDeviceSecretBase64`, sama seperti proyek Game 3.
 
-Backend harus memakai nilai Base64 yang sama:
+Sebelum build, ganti placeholder `REPLACE_WITH_DEVICE_SECRET_BASE64` secara lokal dengan nilai Base64 yang sama seperti backend:
 
 ```env
-DEVICE_SECRET_BASE64=<NILAI_ARKA_DEVICE_SECRET_BASE64>
+DEVICE_SECRET_BASE64=<NILAI_kDeviceSecretBase64>
 ```
 
-Jika secret diganti, perbarui `arka_secrets.h` dan env backend bersamaan, lalu flash ulang perangkat. Secret yang pernah masuk riwayat Git harus dirotasi.
+Jangan commit nilai secret aktif. Setelah secret diganti, flash ulang perangkat.
 
 ## Menjalankan di Wokwi
 
