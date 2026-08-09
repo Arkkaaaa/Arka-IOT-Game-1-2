@@ -556,11 +556,13 @@ void rememberCommand(const Command &command, bool ack, const String &reason) {
 
 void finishCommand(const Command &command, bool ack, const String &reason = String()) {
   rememberCommand(command, ack, reason);
-  sendAck(command, ack, reason);
+  const bool sent = sendAck(command, ack, reason);
   Serial.print("ARKA_GAME12_COMMAND type=");
   Serial.print(command.type);
   Serial.print(" outcome=");
-  Serial.println(ack ? "ACK" : "NACK");
+  Serial.print(ack ? "ACK" : "NACK");
+  Serial.print(" sent=");
+  Serial.println(sent ? "true" : "false");
 }
 
 bool commandIdentity(const String &type, JsonObjectConst payload, Command &command) {
