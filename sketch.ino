@@ -246,6 +246,7 @@ BatteryAlarm pendingBatteryAlarm = BatteryAlarm::NONE;
 uint8_t pendingBatterySamples = 0;
 uint8_t batteryBeepsRemaining = 0;
 uint32_t lastBatteryCheckMs = 0;
+uint32_t lastBatteryLogMs = 0;
 uint32_t lastBatteryReminderMs = 0;
 uint32_t lastBuzzerMs = 0;
 constexpr int kBatteryAdcFull = 2605;
@@ -305,6 +306,18 @@ void manageBatteryAndBuzzer(uint32_t now) {
     }
 
     if (authenticated && (batteryPercent != previousPercent || batteryValid != previousValid)) sendHealth("device.status");
+    if (intervalElapsed(now, lastBatteryLogMs, 10000)) {
+      lastBatteryLogMs = now;
+      Serial.print("ARKA_GAME12_BATTERY adc=");
+      Serial.print(adcValue);
+      Serial.print(" valid=");
+      Serial.print(batteryValid ? "true" : "false");
+      Serial.print(" percent=");
+      if (batteryValid) Serial.print(batteryPercent);
+      else Serial.print("NA");
+      Serial.print(" alarm=");
+      Serial.println(batteryAlarm == BatteryAlarm::CRITICAL ? "CRITICAL" : batteryAlarm == BatteryAlarm::WARNING ? "WARNING" : "NORMAL");
+    }
   }
 
   if (batteryAlarm != BatteryAlarm::NONE && batteryBeepsRemaining == 0 &&
